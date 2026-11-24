@@ -1,0 +1,157 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  DIRIGEANT
+  GESTIONNAIRE_FINANCIER
+  COLLABORATEUR
+}
+
+enum InvoiceStatus {
+  BROUILLON
+  VALIDEE
+  PARTIELLEMENT_PAYEE
+  PAYEE
+  ANNULEE
+}
+
+enum ExpenseStatus {
+  EN_ATTENTE
+  APPROUVEE
+  REFUSEE
+  PAYEE
+}
+
+enum MovementType {
+  ENCAISSEMENT
+  DECAISSEMENT
+  AJUSTEMENT_INITIAL
+}
+
+model Enterprise {
+  id             String   @id @default(uuid())
+  name           String
+  sector         String   @default("Agence Digitale")
+  currency       String   @default("DT")
+  initialBalance Decimal  @db.Decimal(12, 3)
+  currentBalance Decimal  @db.Decimal(12, 3)
+  createdAt      DateTime @default(now())
+
+  members       EnterpriseMember[]
+  contacts      Contact[]
+  projects      Project[]
+  invoices      Invoice[]
+  expenses      Expense[]
+  cashMovements CashMovement[]
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String
+  createdAt DateTime @default(now())
+
+  memberships       EnterpriseMember[]
+  submittedExpenses Expense[]          @relation("SubmittedExpenses")
+  approvedExpenses  Expense[]          @relation("ApprovedExpenses")
+}
+
+model EnterpriseMember {
+  id           String     @id @default(uuid())
+  role         Role
+  userId       String
+  enterpriseId String
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enterprise   Enterprise @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, enterpriseId])
+}
+
+model Contact {
+  id           String     @id @default(uuid())
+  name         String
+  email        String?
+  phone        String?
+  type         String
+  enterpriseId String
+  enterprise   Enterprise @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+
+  invoices Invoice[]
+  expenses Expense[]
+}
+
+model Project {
+  id           String     @id @default(uuid())
+  name         String
+  budget       Decimal    @db.Decimal(12, 3)
+  enterpriseId String
+  enterprise   Enterprise @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+
+  invoices Invoice[]
+  expenses Expense[]
+}
+
+model Invoice {
+  id           String        @id @default(uuid())
+  number       String
+  issueDate    DateTime      @default(now())
+  dueDate      DateTime
+  totalAmount  Decimal       @db.Decimal(12, 3)
+  paidAmount   Decimal       @default(0) @db.Decimal(12, 3)
+  status       InvoiceStatus @default(BROUILLON)
+  enterpriseId String
+  contactId    String
+  projectId    String?
+
+  enterprise Enterprise @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+  contact    Contact    @relation(fields: [contactId], references: [id])
+  project    Project?   @relation(fields: [projectId], references: [id])
+  payments   Payment[]
+}
+
+model Payment {
+  id          String   @id @default(uuid())
+  amount      Decimal  @db.Decimal(12, 3)
+  paymentDate DateTime @default(now())
+  method      String   @default("VIREMENT")
+  invoiceId   String
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+}
+
+model Expense {
+  id            String        @id @default(uuid())
+  title         String
+  category      String
+  amount        Decimal       @db.Decimal(12, 3)
+  expectedDate  DateTime
+  receiptUrl    String?
+  status        ExpenseStatus @default(EN_ATTENTE)
+  enterpriseId  String
+  contactId     String?
+  projectId     String?
+  submittedById String
+  approvedById  String?
+
+  enterprise  Enterprise @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+  contact     Contact?   @relation(fields: [contactId], references: [id])
+  project     Project?   @relation(fields: [projectId], references: [id])
+  submittedBy User       @relation("SubmittedExpenses", fields: [submittedById], references: [id])
+  approvedBy  User?      @relation("ApprovedExpenses", fields: [approvedById], references: [id])
+}
+
+model CashMovement {
+  id           String       @id @default(uuid())
+  type         MovementType
+  amount       Decimal      @db.Decimal(12, 3)
+  date         DateTime     @default(now())
+  description  String
+  referenceId  String?
+  enterpriseId String
+  enterprise   Enterprise   @relation(fields: [enterpriseId], references: [id], onDelete: Cascade)
+}
